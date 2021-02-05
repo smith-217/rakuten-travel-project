@@ -1,0 +1,928 @@
+### 解析例① 体組成計測記録の分析（ローカルレベルモデル） ###
+
+# RパッケージKFASの読み込み(R の起動ごとに必要)
+library(KFAS) 
+
+# 体重データの読み込み（パス指定が必要。難しければ、データ読み込み済.RDataを起動すれば最初からデータが入っています）
+Weight <- ts(scan("Weight.dat")) 
+
+# ローカルレベルモデルの定義
+mod <- SSModel(Weight ~ SSMtrend(1, Q = NA), H = NA)
+
+# 未知パラメータの推定
+fit <- fitSSM(mod, numeric(2), method = "BFGS")
+
+# カルマンフィルタ・カルマンスムーザの実行
+kfs <- KFS(fit$model)
+
+# フィルタ化推定量とその信頼区間
+afilt <- kfs$att
+Pfilt <- kfs$Ptt[,,]
+afiltupper <- afilt+sqrt(Pfilt)*qnorm(0.975)
+afiltlower <- afilt-sqrt(Pfilt)*qnorm(0.975)
+
+# スライド番号18の図の描画
+par(mar=c(3,3,1,1))
+par(mgp=c(2,.5,0))
+plot(Weight,type="o",lty=3,xlab="経過日数",ylab="体重（kg）",ylim=c(83,87))
+lines(afilt,lwd=2)
+lines(afiltupper)
+lines(afiltlower)
+
+# 平滑化状態の信頼区間
+alphahatconf <- predict(fit$model, interval = "confidence", level = 0.95)
+
+# スライド番号19の図の描画
+plot(Weight,type="o",lty=3,xlab="経過日数",ylab="体重（kg）",ylim=c(83,87))
+lines(alphahatconf[,1],lwd=2)
+lines(alphahatconf[,2])
+lines(alphahatconf[,3])
+
+# 欠測値の補間
+WeightNA <- Weight[c(1:20,rep(NA,20),41:60)] # 21~40日目をNA(欠損)に置き換え
+modNA <- SSModel(WeightNA ~ SSMtrend(1, Q = NA), H = NA)
+fitNA <- fitSSM(modNA, numeric(2), method = "BFGS")
+confNA <- predict(fitNA$model, interval="confidence", level=0.95)
+preNA  <- predict(fitNA$model, interval="prediction", level=0.95)
+
+# スライド番号20の図の描画
+plot(Weight,type="o",lty=3,xlab="経過日数",ylab="体重（kg）",ylim=c(83,87))
+lines(21:40,Weight[21:40],type="o",lty=3,col=8)
+lines(confNA[,1],lwd=2)
+lines(confNA[,2])
+lines(confNA[,3])
+lines(21:40,preNA[21:40,2],lty=2)
+lines(21:40,preNA[21:40,3],lty=2)
+
+# 長期予測
+mod50 <- SSModel(Weight[1:50] ~ SSMtrend(1, Q = NA), H = NA)
+fit50 <- fitSSM(mod50, numeric(2), method = "BFGS")
+conf50 <- predict(fit50$model, interval ="confidence", n.ahead = 10)
+pre50  <- predict(fit50$model, interval ="prediction", n.ahead = 10)
+
+# スライド番号21の図の描画
+plot(Weight,type="o",lty=3,xlab="経過日数",ylab="体重（kg）",ylim=c(83,87))
+lines(51:60,Weight[51:60],type="o",lty=3,col=8)
+lines(51:60,conf50[,1],lwd=2)
+lines(51:60,conf50[,2])
+lines(51:60,conf50[,3])
+lines(51:60,pre50[,2],lty=2)
+lines(51:60,pre50[,3],lty=2)
+
+# 長期予測（欠測値NAとして予測するやり方）
+Weight50 <- Weight[c(1:50,rep(NA,10))] # 51日目以降をNA(欠損)に置き換え
+mod50NA <- SSModel(Weight50 ~ SSMtrend(1, Q = NA), H = NA)
+fit50NA <- fitSSM(mod50NA, numeric(2), method = "BFGS")
+conf50NA <- predict(fit50NA$model, interval="confidence", level=0.95)
+pre50NA  <- predict(fit50NA$model, interval="prediction", level=0.95)
+
+### 解析例① 体組成計測記録の分析（２変量ローカルレベルモデル） ###
+
+Bodyfat <- ts(scan("Bodyfat.dat")) # 体脂肪率データの読み込み（パス指定が必要。難しければ、データ読み込み済.RDataを起動すれば最初からデータが入っています）
+
+# 欠損なしの場合
+modSUTSE <- SSModel(cbind(Weight, Bodyfat) ~
+  SSMtrend(1, Q = matrix(NA,2,2)), H = matrix(NA,2,2))
+fitSUTSE <- fitSSM(modSUTSE, numeric(6), method="BFGS")
+kfsSUTSE <- KFS(fitSUTSE$model)
+
+# 欠損あり（21~40日目の体重がNA）の場合
+modSUTSENA <- SSModel(cbind(WeightNA, Bodyfat) ~
+  SSMtrend(1, Q = matrix(NA,2,2)), H = matrix(NA,2,2))
+fitSUTSENA <- fitSSM(modSUTSENA, numeric(6), method="BFGS")
+kfsSUTSENA <- KFS(fitSUTSENA$model)
+confSUTSENA <- predict(fitSUTSENA$model, interval="confidence", level=0.95)
+preSUTSENA  <- predict(fitSUTSENA$model, interval="prediction", level=0.95)
+
+# スライド番号28の分散共分散行列の表示
+fitSUTSE$model$H
+fitSUTSE$model$Q
+
+# スライド番号29の図の描画
+par(mfrow=c(2,1))   # 描画領域を２分割
+par(mar=c(3,4,1,1)) # 描画領域の余白設定
+plot(Bodyfat,type="o",lty=3,xlab="経過日数",ylab="体脂肪率（％）")
+lines(confSUTSENA$Bodyfat[,1],lwd=2)
+lines(confSUTSENA$Bodyfat[,2])
+lines(confSUTSENA$Bodyfat[,3])
+
+plot(Weight,type="o",lty=3,ylim=c(83,86.5),xlab="経過日数",ylab="体重（kg）")
+lines(confNA[,1],lwd=2,col=8)
+lines(confNA[,2],col=8)
+lines(confNA[,3],col=8)
+lines(21:40,preNA[21:40,2],lty=2,col=8)
+lines(21:40,preNA[21:40,3],lty=2,col=8)
+lines(confSUTSENA$Weight[,1],lwd=2)
+lines(confSUTSENA$Weight[,2])
+lines(confSUTSENA$Weight[,3])
+lines(21:40,preSUTSENA$Weight[21:40,2],lty=2)
+lines(21:40,preSUTSENA$Weight[21:40,3],lty=2)
+
+### 解析例① 体組成計測記録の分析（トレンド成分モデル） ###
+#
+# 1.ローカルレベルモデル
+# 2.平滑化トレンドモデル
+# 3.ローカル線形トレンドモデル
+
+# モデル定義
+mod1 <- SSModel(Weight ~ SSMtrend(1, Q = NA), H = NA)
+mod2 <- SSModel(Weight ~ SSMtrend(2, Q = list(0, NA)), H = NA)
+mod3 <- SSModel(Weight ~ SSMtrend(2, Q = list(NA,NA)), H = NA)
+
+# 未知パラメータの推定
+fit1 <- fitSSM(mod1, numeric(2), method = "BFGS")
+fit2 <- fitSSM(mod2, numeric(2), method = "BFGS")
+fit3 <- fitSSM(mod3, numeric(3), method = "BFGS")
+
+# カルマンフィルタ・カルマンスムーザの実行
+kfs1 <- KFS(fit1$model)
+kfs2 <- KFS(fit2$model)
+kfs3 <- KFS(fit3$model)
+
+# 最大対数尤度
+logLik1 <- kfs1$logLik - sum(kfs1$Finf>0) * log(2*pi)/2
+logLik2 <- kfs2$logLik - sum(kfs2$Finf>0) * log(2*pi)/2
+logLik3 <- kfs3$logLik - sum(kfs3$Finf>0) * log(2*pi)/2
+
+# AIC (赤池情報量規準)
+AIC1 <- -2*logLik1 + 2*( 2 + 1 )
+AIC2 <- -2*logLik2 + 2*( 2 + 2 )
+AIC3 <- -2*logLik3 + 2*( 3 + 2 )
+
+# スライド番号35の図の描画
+par(mfrow=c(2,1))   # 描画領域を２分割
+par(mar=c(2,4,1,1)) # 描画領域の余白設定
+plot(Weight,type="o",lty=3,xlab="",ylab="水準成分")
+lines(kfs1$alphahat[,"level"],lwd=2,col=8)
+lines(kfs2$alphahat[,"level"],lwd=2)
+lines(kfs3$alphahat[,"level"],lwd=2,lty=5)
+
+plot(kfs2$alphahat[,"slope"],type="l",lwd=2,xlab="",ylab="傾き成分")
+lines(kfs3$alphahat[,"slope"],lwd=2,lty=5)
+
+### 解析例② 小売業月次販売額の予測（基本構造時系列モデル） ###
+
+sales <- read.csv("sales.csv")          # データ（csv形式）の読み込み（パス指定が必要。難しければ、データ読み込み済.RDataを起動すれば最初からデータが入っています）
+fabric <- ts(sales[,2])                 # 織物衣服業のデータ
+fabricNA <- c(fabric[1:120],rep(NA,24)) # 直近2年間をNA(欠測＝予測対象)
+
+# モデル定義
+mod1<-SSModel(fabricNA ~ SSMtrend(1,Q=NA) + SSMseasonal(12,Q=0 ), H=NA)
+mod2<-SSModel(fabricNA ~ SSMtrend(1,Q=NA) + SSMseasonal(12,Q=NA), H=NA)
+mod3<-SSModel(fabricNA ~ SSMtrend(2,Q=list(0,NA)) + SSMseasonal(12,Q=0 ), H=NA)
+mod4<-SSModel(fabricNA ~ SSMtrend(2,Q=list(0,NA)) + SSMseasonal(12,Q=NA), H=NA)
+
+# 未知パラメータの推定
+fit1 <- fitSSM(mod1, numeric(2), method = "BFGS")
+fit2 <- fitSSM(mod2, numeric(3), method = "BFGS")
+fit3 <- fitSSM(mod3, numeric(2), method = "BFGS")
+fit4 <- fitSSM(mod4, numeric(3), method = "BFGS")
+
+# カルマンフィルタ・カルマンスムーザの実行
+kfs1 <- KFS(fit1$model)
+kfs2 <- KFS(fit2$model)
+kfs3 <- KFS(fit3$model)
+kfs4 <- KFS(fit4$model) 
+
+# 最大対数尤度
+logLik1 <- kfs1$logLik - sum(kfs1$Finf>0) * log(2*pi)/2
+logLik2 <- kfs2$logLik - sum(kfs2$Finf>0) * log(2*pi)/2
+logLik3 <- kfs3$logLik - sum(kfs3$Finf>0) * log(2*pi)/2
+logLik4 <- kfs4$logLik - sum(kfs4$Finf>0) * log(2*pi)/2
+
+# AIC (赤池情報量規準)
+AIC1 <- -2*logLik1 + 2*( 2 + 12 )
+AIC2 <- -2*logLik2 + 2*( 3 + 12 )
+AIC3 <- -2*logLik3 + 2*( 2 + 13 )
+AIC4 <- -2*logLik4 + 2*( 3 + 13 )
+
+# スライド番号50の図の描画
+par(mfrow=c(3,1))
+par(ps=16)
+par(mar=c(3.5,3.5,1,1))
+par(mgp=c(2,0.5,0))
+plot(fabric, type="l", lty=1, ylab = "販売額（10億円）",xaxt="n",xaxs="i",col=1,xlab="（a）原系列とトレンド（水準）成分の平滑化推定値および予測値")
+axis(side=1,at=1+0:11*12,labels=c("02/1","03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1"))
+lines(kfs2$alphahat[,"level"], col=3)
+lines(kfs4$alphahat[,"level"], col=4)
+abline(v=120.5,lty=3)
+
+plot(kfs2$alphahat[,"sea_dummy1"],type="l", ylab = "販売額（10億円）",xaxt="n",xaxs="i",yaxs="i",col=3,xlab="（b）季節成分の平滑化推定値および予測値")
+lines(kfs4$alphahat[,"sea_dummy1"],col=4)
+axis(side=1,at=1+0:11*12,labels=c("02/1","03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1"))
+abline(v=120.5,lty=3)
+
+plot(fabric-kfs2$muhat,type="l", ylab="販売額（10億円）",　xaxt="n",xaxs="i",yaxs="i",col=3,ylim=c(-150,150),xlab="（c）平滑化後の残差と予測誤差")
+lines(fabric-kfs4$muhat,col=4)
+axis(side=1,at=1+0:11*12,labels=c("02/1","03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1"))
+abline(v=120.5,lty=3)
+abline(h=0,col=8)
+
+### 解析例② 小売業月次販売額の予測（カレンダー効果） ###
+
+# 各月の曜日集計
+dates <- seq(as.Date("2002-01-01"), as.Date("2013-12-31"), by = 1)
+weeks <- table(substr(dates,1,7), weekdays(dates, T))
+sun <- weeks[,"日"]
+mon <- weeks[,"月"]-sun; tue <- weeks[,"火"]-sun; wed <- weeks[,"水"]-sun
+thu <- weeks[,"木"]-sun; fry <- weeks[,"金"]-sun; sat <- weeks[,"土"]-sun
+calendar <- cbind(mon, tue, wed, thu, fry, sat)
+
+# うるう年２月のダミー変数
+leapyear <- rownames(weeks) %in% c("2004-02","2008-02","2012-02")
+
+# カレンダー効果(曜日・うるう年) のあるモデル
+modCalender <- SSModel(fabricNA ~ SSMtrend(2, Q = list(0,NA))
+  + SSMseasonal(12, sea.type="dummy") + leapyear + calendar, H = NA)
+fitCalender <- fitSSM(modCalender, numeric(2), method = "BFGS")
+kfsCalender <- KFS(fitCalender$model)
+
+# 最終時点の平滑化状態を表示（1つ目：うるう年効果、2～7つ目：曜日効果（月～土））
+tail(kfsCalender$alphahat,1)
+
+# 対数尤度・AIC
+logLikCalender <- kfsCalender$logLik-sum(kfsCalender$Finf>0)*log(2*pi)/2
+AICCalender <- -2*logLikCalender + 2*( 2 + 20 )
+
+# スライド番号57の図の描画
+plot(kfsCalender$muhat - kfsCalender$alphahat[,"level"], type="l", col=4,
+  xaxs="i", xaxt="n", xlab="", ylab="販売額（10億円）")
+axis(side=1,at=1+0:11*12,labels=c("02/1","03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1"))
+abline(v=120.5,lty=3)
+
+### 解析例② 小売業月次販売額の予測（残差分析） ###
+
+# 機械器具小売業販売額
+machine <- sales[,3]
+
+# 水準シフト干渉変数を加えたモデル
+mod0 <- SSModel(log(machine) ~ SSMtrend(1, Q = NA)
+  + SSMseasonal(12, Q = NA, sea.type="dummy"), H = NA)
+fit0 <- fitSSM(mod0, numeric(3))
+kfs0 <- KFS(fit0$model, smoothing=c("state","mean","disturbance"))
+
+# スライド番号61の図の描画
+par(mfrow=c(3,1))   # 描画領域を３分割
+par(mar=c(3,3,1,1)) # 描画領域の余白設定
+par(mgp=c(2,0.5,0))
+plot(log(machine),type="l",xaxt="n",xlab="(a) 販売額の対数系列と平滑化状態の水準成分",ylab="販売額（対数）")
+lines(kfs0$alphahat[,"level"],col=8)
+axis(side=1,at=1+0:11*12,labels=c("02/1","03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1"))
+plot(rstandard(kfs0, "pearson"),ylim=c(-6,6),xaxt="n",xlab="(b) 観測値攪乱項の補助残差",ylab="販売額（対数）")
+abline(h=c(-1.96,1.96),lty=3)
+axis(side=1,at=1+0:11*12,labels=c("02/1","03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1"))
+plot(rstandard(kfs0, "state")[,1],ylim=c(-6,6),xaxt="n",xlab="(c) 状態攪乱項（水準成分）の補助残差",ylab="販売額（対数）")
+abline(h=c(-1.96,1.96),lty=3)
+axis(side=1,at=1+0:11*12,labels=c("02/1","03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1"))
+
+
+### 解析例② 小売業月次販売額の予測（干渉変数の導入＆異常値除外） ###
+
+# 2010 年11 月，12 月のデータを除外
+machineNA <- machine
+machineNA[sales[,1] %in% c("2010年11月","2010年12月")] <- NA
+
+# 2011 年8 月以降の水準シフト干渉変数の定義
+ShiftLevel <- (1:nrow(sales) >= which(sales[,1]=="2011年8月"))
+
+# 水準シフト干渉変数を加えたモデル
+modShift <- SSModel(log(machineNA) ~ SSMtrend(1, Q = NA)
+  + SSMseasonal(12, Q = NA, sea.type="dummy")
+  + ShiftLevel, H = NA)
+fitShift <- fitSSM(modShift, numeric(3))
+kfsShift <- KFS(fitShift$model, smoothing=c("state","mean","disturbance"))
+
+# スライド番号63の図の描画
+par(mfrow=c(3,1))   # 描画領域を３分割
+par(mar=c(3,3,1,1)) # 描画領域の余白設定
+par(mgp=c(2,0.5,0))
+
+plot(log(machine),type="l",xaxt="n",xlab="(a) 販売額の対数系列と平滑化状態の水準成分",ylab="販売額（対数）")
+lines(kfsShift$muhat - kfsShift$alphahat[,"sea_dummy1"],col=8)
+
+
+axis(side=1,at=1+0:11*12,labels=c("02/1","03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1"))
+plot(rstandard(kfsShift, "pearson"),ylim=c(-6,6),xaxt="n",xlab="(b) 観測値攪乱項の補助残差",ylab="販売額（対数）")
+abline(h=c(-1.96,1.96),lty=3)
+axis(side=1,at=1+0:11*12,labels=c("02/1","03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1"))
+plot(rstandard(kfsShift, "state")[,1],ylim=c(-6,6),xaxt="n",xlab="(c) 状態攪乱項（水準成分）の補助残差",ylab="販売額（対数）")
+abline(h=c(-1.96,1.96),lty=3)
+axis(side=1,at=1+0:11*12,labels=c("02/1","03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1"))
+
+### 解析例③ 訪日外客数の月次推移の解析例（対数変換なし） ###
+
+# パッケージ“KFAS”の読み込み
+library(KFAS) 
+
+# 訪日外客数データの読み込み（パス指定が必要。難しければ、データ読み込み済.RDataを起動すれば最初からデータが入っています）
+jnto <- read.csv("訪日外客数.csv")
+
+# 中国、香港、台湾、韓国からの訪日外客数の月次推移の描画
+par(mar=c(3,3,1,1))
+par(mgp=c(2,.5,0))
+matplot(jnto[,c(3:6)]/1000,log="y",type="l",xaxt="n",ylab="訪日外客数（千人）",xaxs="i")
+legend(147,70,colnames(jnto)[c(3:6)],col=1:4,lty=1:4)
+abline(v=1+0:15*12,lty=3,col=gray(0.7))
+axis(side=1,at=1+0:15*12,labels=c("03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1","14/1","15/1","16/1","17/1","18/1"))
+
+irow = 3 # 解析する列を指定（3:中国）
+
+# mod1 ローカルレベルモデル＋固定季節変動（対数変換なし）
+mod1 <- SSModel(jnto[,irow] ~ SSMtrend(1, Q=NA) + SSMseasonal(12, Q=0 ), H=NA)
+fit1 <- fitSSM(mod1, numeric(2), method = "SANN")
+kfs1 <- KFS(fit1$model)
+logLik1 <- kfs1$logLik - sum(kfs1$Finf>0) * log(2*pi)/2
+AIC1 <- -2*logLik1 + 2*( 2 + 12 )
+
+# mod2 ローカルレベルモデル＋可変季節変動（対数変換なし）
+mod2 <- SSModel(jnto[,irow] ~ SSMtrend(1, Q=NA) + SSMseasonal(12, Q=NA), H=NA)
+fit2 <- fitSSM(mod2, numeric(3), method = "SANN")
+kfs2 <- KFS(fit2$model, smoothing=c("state", "mean", "disturbance"))
+logLik2 <- kfs2$logLik - sum(kfs2$Finf > 0) * log(2*pi)/2
+AIC2 <- -2*logLik2 + 2*( 3 + 12 )
+
+# mod3 平滑化トレンドモデル＋固定季節変動（対数変換なし）
+mod3 <- SSModel(jnto[,irow] ~ SSMtrend(2, Q=list(0, NA)) + SSMseasonal(12, Q=0 ), H=NA)
+fit3 <- fitSSM(mod3, numeric(2), method = "SANN")
+kfs3 <- KFS(fit3$model, smoothing=c("state", "mean", "disturbance"))
+logLik3 <- kfs3$logLik - sum(kfs3$Finf > 0) * log(2*pi)/2
+AIC3 <- -2*logLik3 + 2*( 2 + 13 )
+
+# mod4 平滑化トレンドモデル＋可変季節変動（対数変換なし）
+mod4 <- SSModel(jnto[,irow] ~ SSMtrend(2, Q=list(0, NA)) + SSMseasonal(12, Q=NA), H=NA)
+fit4 <- fitSSM(mod4, numeric(3), method = "SANN")
+kfs4 <- KFS(fit4$model, smoothing=c("state", "mean", "disturbance"))
+logLik4 <- kfs4$logLik - sum(kfs4$Finf > 0) * log(2*pi)/2
+AIC4 <- -2*logLik4 + 2*( 3 + 13 )
+
+# mod5 ローカル線形トレンドモデル＋固定季節変動（対数変換なし）
+mod5 <- SSModel(jnto[,irow] ~ SSMtrend(2, Q=list(NA, NA)) + SSMseasonal(12, Q=0), H=NA)
+fit5 <- fitSSM(mod5, numeric(3), method = "SANN")
+kfs5 <- KFS(fit5$model, smoothing=c("state", "mean", "disturbance"))
+logLik5 <- kfs5$logLik - sum(kfs5$Finf > 0) * log(2*pi)/2
+AIC5 <- -2*logLik5 + 2*( 3 + 13 )
+
+# mod6 ローカル線形トレンドモデル＋可変季節変動（対数変換なし）
+mod6 <- SSModel(jnto[,irow] ~ SSMtrend(2, Q=list(NA, NA)) + SSMseasonal(12, Q=NA), H=NA)
+fit6 <- fitSSM(mod6, numeric(4), method = "SANN")
+kfs6 <- KFS(fit6$model, smoothing=c("state", "mean", "disturbance"))
+logLik6 <- kfs6$logLik - sum(kfs6$Finf > 0) * log(2*pi)/2
+AIC6 <- -2*logLik6 + 2*( 4 + 13 )
+
+### 解析例③ 訪日外客数の月次推移の解析例（対数変換あり） ###
+
+# mod1 ローカルレベルモデル＋固定季節変動（対数変換あり）
+mod1 <- SSModel(log(jnto[,irow]) ~ SSMtrend(1, Q=NA) + SSMseasonal(12, Q=0 ), H=NA)
+fit1 <- fitSSM(mod1, numeric(2), method = "SANN")
+kfs1 <- KFS(fit1$model)
+logLik1 <- kfs1$logLik - sum(kfs1$Finf>0) * log(2*pi)/2
+AIC1 <- -2*logLik1 + 2*( 2 + 12 ) + 2*sum(log(jnto[,irow]))
+
+# mod2 ローカルレベルモデル＋可変季節変動（対数変換あり）
+mod2 <- SSModel(log(jnto[,irow]) ~ SSMtrend(1, Q=NA) + SSMseasonal(12, Q=NA), H=NA)
+fit2 <- fitSSM(mod2, numeric(3), method = "SANN")
+kfs2 <- KFS(fit2$model, smoothing=c("state", "mean", "disturbance"))
+logLik2 <- kfs2$logLik - sum(kfs2$Finf > 0) * log(2*pi)/2
+AIC2 <- -2*logLik2 + 2*( 3 + 12 ) + 2*sum(log(jnto[,irow]))
+
+# mod3 平滑化トレンドモデル＋固定季節変動（対数変換あり）
+mod3 <- SSModel(log(jnto[,irow]) ~ SSMtrend(2, Q=list(0, NA)) + SSMseasonal(12, Q=0 ), H=NA)
+fit3 <- fitSSM(mod3, numeric(2), method = "SANN")
+kfs3 <- KFS(fit3$model, smoothing=c("state", "mean", "disturbance"))
+logLik3 <- kfs3$logLik - sum(kfs3$Finf > 0) * log(2*pi)/2
+AIC3 <- -2*logLik3 + 2*( 2 + 13 ) + 2*sum(log(jnto[,irow]))
+
+# mod4 平滑化トレンドモデル＋可変季節変動（対数変換あり）
+mod4 <- SSModel(log(jnto[,irow]) ~ SSMtrend(2, Q=list(0, NA)) + SSMseasonal(12, Q=NA), H=NA)
+fit4 <- fitSSM(mod4, numeric(3), method = "SANN")
+kfs4 <- KFS(fit4$model, smoothing=c("state", "mean", "disturbance"))
+logLik4 <- kfs4$logLik - sum(kfs4$Finf > 0) * log(2*pi)/2
+AIC4 <- -2*logLik4 + 2*( 3 + 13 ) + 2*sum(log(jnto[,irow]))
+
+# mod5 ローカル線形トレンドモデル＋固定季節変動（対数変換あり）
+mod5 <- SSModel(log(jnto[,irow]) ~ SSMtrend(2, Q=list(NA, NA)) + SSMseasonal(12, Q=0), H=NA)
+fit5 <- fitSSM(mod5, numeric(3), method = "SANN")
+kfs5 <- KFS(fit5$model, smoothing=c("state", "mean", "disturbance"))
+logLik5 <- kfs5$logLik - sum(kfs5$Finf > 0) * log(2*pi)/2
+AIC5 <- -2*logLik5 + 2*( 3 + 13 ) + 2*sum(log(jnto[,irow]))
+
+# mod6 ローカル線形トレンドモデル＋可変季節変動（対数変換あり）
+mod6 <- SSModel(log(jnto[,irow]) ~ SSMtrend(2, Q=list(NA, NA)) + SSMseasonal(12, Q=NA), H=NA)
+fit6 <- fitSSM(mod6, numeric(4), method = "SANN")
+kfs6 <- KFS(fit6$model, smoothing=c("state", "mean", "disturbance"))
+logLik6 <- kfs6$logLik - sum(kfs6$Finf > 0) * log(2*pi)/2
+AIC6 <- -2*logLik6 + 2*( 4 + 13 ) + 2*sum(log(jnto[,irow]))
+
+### 解析例③ 訪日外客数の月次推移の解析例（カレンダー効果） ###
+
+irow = 3 # 解析する列を指定（3:中国）
+
+# 各月の曜日集計
+dates <- seq(as.Date("2003-01-01"), as.Date("2018-12-31"), by = 1) 
+weeks <- table(substr(dates, 1, 7), weekdays(dates, T))
+sun <- weeks[,"日"]
+mon <- weeks[,"月"]-sun; tue <- weeks[,"火"]-sun; wed <- weeks[,"水"]-sun
+thu <- weeks[,"木"]-sun; fri <- weeks[,"金"]-sun; sat <- weeks[,"土"]-sun
+calendar <- cbind(mon, tue, wed, thu, fri, sat) 
+
+# うるう年２月のダミー変数
+leapyear <- rownames(weeks) %in% c("2004-02","2008-02","2012-02","2016-02")
+
+# mod1cal ローカルレベルモデル＋固定季節変動＋曜日効果＋閏年効果
+mod1cal <- SSModel(log(jnto[,irow]) ~ SSMtrend(1, Q=NA)
+  + SSMseasonal(12, Q=NA ) + calendar + leapyear, H=NA)
+fit1cal <- fitSSM(mod1cal, numeric(3), method = "SANN")
+kfs1cal <- KFS(fit1cal$model)
+logLik1cal <- kfs1cal$logLik - sum(kfs1cal$Finf>0) * log(2*pi)/2
+AIC1cal <- -2*logLik1cal + 2*( 3 + 19 ) + 2*sum(log(jnto[,irow]))
+
+kfs1cal # 曜日効果と閏年効果の推定値と標準誤差を確認
+
+### 解析例③ 訪日外客数の月次推移の解析例（旧正月開始月効果） ###
+
+# 旧正月開始のダミー変数
+newyear <- rownames(weeks) %in% c("2003-02","2004-01","2005-02","2006-01","2007-02","2008-02","2009-01","2010-02","2011-02","2012-01","2013-02","2014-01","2015-02","2016-02","2017-01","2018-02")
+
+# mod2cal ローカルレベルモデル＋固定季節変動＋旧正月開始月効果
+mod2cal <- SSModel(log(jnto[,irow]) ~ SSMtrend(1, Q=NA)
+  + SSMseasonal(12, Q=NA ) + newyear, H=NA)
+fit2cal <- fitSSM(mod2cal, numeric(3), method = "SANN")
+kfs2cal <- KFS(fit2cal$model)
+logLik2cal <- kfs2cal$logLik - sum(kfs2cal$Finf>0) * log(2*pi)/2
+AIC2cal <- -2*logLik2cal + 2*( 3 + 13 ) + 2*sum(log(jnto[,irow]))
+
+kfs2cal # 曜日効果と閏年効果の推定値と標準誤差を確認
+
+
+
+### 解析例③ 訪日外客数の月次推移の解析例（定常AR成分） ###
+
+china <- jnto[,3] # 中国のデータ
+
+# 状態空間モデルの定義
+mod <- SSModel(log(china) ~ SSMtrend(2, Q = list(0,NA))
+  + SSMseasonal(12, Q=NA) + SSMarima(ar = 0, Q = NA), H = NA)
+# ARモデルの自己回帰係数は自動で推定できず，
+# updatefnというパラメータを更新するための
+# 関数を定義してfitSSMの引数に加える必要がある
+updatefn <- function(pars, model){
+SSModel(log(china) ~ SSMtrend(2, Q = list(0,exp(pars[1])))
+  + SSMseasonal(12, Q=exp(pars[2]))
+  + SSMarima(ar = artransform(pars[3]), Q = exp(pars[4])), H = exp(pars[5]))
+}
+# 対数尤度最大化による未知パラメータの推定
+fit <- fitSSM(mod, numeric(5), updatefn, method="BFGS")
+# 状態推定（平滑化）
+kfs <- KFS(fit$model)
+
+# 推定されたAR係数を確認
+tail(fit$model$T,1) 
+
+# スライド番号72の図の描画
+par(mar=c(3,3,1,1))
+par(mgp=c(2,.5,0))
+plot(china/1000,log="y",type="o",xaxt="n",ylab="訪日外客数（千人）",xlab="",col=gray(0.2),xaxs="i")
+lines(exp(kfs$alphahat[,"level"])/1000,col=2,lwd=2) 
+lines(exp(kfs$alphahat[,"level"]+kfs$alphahat[,"arima1"])/1000,col=4,lwd=2) 
+legend(2,250,c("水準成分","水準＋定常AR(1)成分"),lwd=2,col=c(2,4))
+abline(v=1+0:15*12,lty=3,col=gray(0.7))
+axis(side=1,at=1+0:15*12,labels=c("03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1","14/1","15/1","16/1","17/1","18/1"))
+
+
+par(mar=c(3,3,1,1))
+par(mgp=c(2,.5,0))
+plot(kfs$alphahat[,"arima1"],xaxt="n",ylab="定常AR成分",xlab="",col=4,xaxs="i",lwd=2)
+abline(h=0,col=gray(0.7))
+abline(v=1+0:15*12,lty=3,col=gray(0.7))
+axis(side=1,at=1+0:15*12,labels=c("03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1","14/1","15/1","16/1","17/1","18/1"))
+
+
+### 解析例④ 交通事故月次死者数の解析例 ###
+
+# パッケージ“KFAS”の読み込み
+library(KFAS) 
+
+# 月次交通事故死者数データの読み込み（パス指定が必要。難しければ、データ読み込み済.RDataを起動すれば最初からデータが入っています）
+tsuki = ts(scan("tsuki.txt"))
+
+# 補助資料図11の描画
+par(mar=c(1.5,3,1,0.5))
+par(mgp=c(2,0.5,0))
+plot(tsuki,xlim=c(1,216),ylim=c(0,1000),ylab="死者数（人）",xlab="",xaxt="n",xaxs="i",yaxs="i")
+axis(side=1,at=1+0:17*12,labels=c("98/1","99/1","00/1","01/1","02/1","03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1","14/1","15/1"))
+abline(v=1+1:17*12,lty=3,col=gray(0.7))
+lines(tsuki)
+
+# 状態空間モデルの定義
+modPois <- SSModel(tsuki ~ SSMtrend(2, Q=list(0,NA))
+  + SSMseasonal(12, Q=NA), distribution="poisson", u=1)
+
+# 最尤法による未知パラメータの推定
+fitPois <- fitSSM(modPois, c(-15,-10), nsim=1000, method="BFGS")
+
+# 状態推定
+kfsPois <- KFS(fitPois$model, nsim=1000)
+
+# 補助資料図12の描画
+par(mfrow=c(3,1))
+par(cex=0.8)
+par(mar=c(3,1.5,0.5,0.5))
+par(mgp=c(2,0.5,0))
+plot(kfsPois$alphahat[,1], type="l", xlab="",ylab="", xaxt="n",xaxs="i")
+axis(side=1,at=1+0:17*12,labels=c("98/1","99/1","00/1","01/1","02/1","03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1","14/1","15/1"))
+mtext("(a) 水準成分",side=1,cex=1,line=2)
+plot(kfsPois$alphahat[,2], type="l", xlab="",ylab="", xaxt="n",xaxs="i")
+axis(side=1,at=1+0:17*12,labels=c("98/1","99/1","00/1","01/1","02/1","03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1","14/1","15/1"))
+mtext("(b) 傾き成分",side=1,cex=1,line=2)
+plot(kfsPois$alphahat[,3], type="l", xlab="",ylab="", xaxt="n",xaxs="i")
+axis(side=1,at=1+0:17*12,labels=c("98/1","99/1","00/1","01/1","02/1","03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1","14/1","15/1"))
+mtext("(c) 季節成分",side=1,cex=1,line=2)
+
+# 直近12ヵ月間（2015年1～12月）のデータを欠測値（NA）に代えたデータを作成
+tsukiNA <- tsuki; tsukiNA[205:216] <- NA
+
+# 状態空間モデルの定義
+modPoisNA <- SSModel(tsukiNA ~
+  SSMtrend(2, Q=list(0,NA)) + SSMseasonal(12, Q=NA),
+  distribution="poisson", u=1)
+
+# 対数尤度最大化による未知パラメータの推定
+fitPoisNA <- fitSSM(modPoisNA, c(-15,-10), method="BFGS", nsim=1000)
+
+# 状態推定
+kfsPoisNA <- KFS(fitPoisNA$model, nsim=1000)
+
+# 長期予測（予測区間）
+prePoisNA <- predict(fitPoisNA$model, interval="prediction",
+  level=0.95, nsim=10000)
+
+# 直近6ヵ月間（2015年7～12月）のデータを欠測値（NA）に代えたデータを作成
+tsukiNA2 = tsuki; tsukiNA2[211:216] = NA
+
+# 状態空間モデルの定義
+modPoisNA2 <- SSModel(tsukiNA2 ~ SSMtrend(2,Q=c(list(0),list(NA)))
+  + SSMseasonal(12,sea.type="dummy",Q=NA),
+  distribution = "poisson")
+
+# 対数尤度最大化による未知パラメータの推定
+fitPoisNA2 <- fitSSM(modPoisNA2, c(-15,-10), method="BFGS", nsim=1000)
+
+# インポータンス・サンプリングによる状態推定
+kfsPoisNA2 <- KFS(fitPoisNA2$model, nsim=1000)
+
+# 長期予測（予測区間）
+prePoisNA2 <- predict(fitPoisNA2$model, interval="prediction", level=0.95, nsim=10000)
+
+# 補助資料図14の描画
+par(mar=c(1.5,3,1,0.5))
+par(mgp=c(2,0.5,0))
+plot(tsuki,type="l",xlim=c(181,216),ylim=c(250,500),ylab="死者数（人）",xlab="",xaxt="n",xaxs="i",yaxs="i")
+axis(side=1,at=1+0:17*12,labels=c("98/1","99/1","00/1","01/1","02/1","03/1","04/1","05/1","06/1","07/1","08/1","09/1","10/1","11/1","12/1","13/1","14/1","15/1"))
+lines(kfsPoisNA$muhat[1:204],col=2,lty=2)
+lines(kfsPoisNA2$muhat[1:210],col=4,lty=2)
+lines(tsuki)
+lines(205:216,prePoisNA[205:216,1],col=2,lwd=2)
+lines(205:216,prePoisNA[205:216,2],col=2)
+lines(205:216,prePoisNA[205:216,3],col=2)
+lines(211:216,prePoisNA2[211:216,1],col=4,lwd=2)
+lines(211:216,prePoisNA2[211:216,2],col=4)
+lines(211:216,prePoisNA2[211:216,3],col=4)
+
+### 解析例④ 交通事故年次死傷者数の解析例 ###
+
+# パッケージ“KFAS”の読み込み
+library(KFAS) 
+
+# 年次交通事故死傷者数データの読み込み（パス指定が必要。難しければ、データ読み込み済.RDataを起動すれば最初からデータが入っています）
+nen <- ts(read.csv("nen.csv"))
+
+# 補助資料図15の描画
+par(mfrow=c(3,1))
+par(cex=0.8)
+par(mar=c(3,3,0.5,1.5))
+par(mgp=c(2,0.5,0))
+plot(nen[,1]/1000, type="l", xlab="",ylab="死者数（千人）", xaxt="n",xaxs="i",yaxs="i",ylim=c(0,12))
+axis(side=1,1+0:7*5,1980+0:7*5)
+mtext("(a) 死者数",side=1,cex=1,line=2)
+plot(nen[,2]/1000, type="l", xlab="",ylab="重傷者数（千人）", xaxt="n",xaxs="i",yaxs="i",ylim=c(0,85))
+axis(side=1,1+0:7*5,1980+0:7*5)
+mtext("(b) 重傷者数",side=1,cex=1,line=2)
+plot(nen[,3]/1000, type="l", xlab="",ylab="その他負傷者数（千人）", xaxt="n",xaxs="i",yaxs="i",ylim=c(0,1200))
+axis(side=1,1+0:7*5,1980+0:7*5)
+mtext("(c) その他の負傷者数",side=1,cex=1,line=2)
+
+# 補助資料図16の描画
+par(mar=c(1.5,3,1,1.5))
+par(mgp=c(2,0.5,0))
+plot(nen[,4]/1e6,ylim=c(0,130),ylab="推計人口（百万人）",xlab="",xaxt="n",xaxs="i",yaxs="i")
+axis(side=1,1+0:7*5,1980+0:7*5)
+
+# 直近5年間（2011～2015年）のデータを欠測値（NA）に代えたデータを作成
+nenNA <- nen; nenNA[32:36,1:3] <- NA
+
+# 状態空間モデルの定義（ランダム効果なし）
+modPois2 <- SSModel(nenNA[,1:3] ~ 
+  SSMtrend(2, Q = list(matrix(0, 3, 3), matrix(NA, 3, 3))),
+  distribution = "poisson", u = nenNA[,4])
+
+# 対数尤度最大化による未知パラメータの推定
+fitPois2 <- fitSSM(modPois2, c(rep(-10,3),rep(0,3)), method="BFGS",nsim=1000)
+
+# インポータンス・サンプリングによる状態推定
+kfsPois2 <- KFS(fitPois2$model, nsim=1000)
+
+# AIC の算出
+aicPois2 <- 2 * fitPois2$optim.out$value + 2 * (6 + 6)
+
+# インポータンス・サンプリングによる観測値の予測
+prePois2 <- predict(fitPois2$model, interval="prediction",
+  level=0.95, nsim=10000)
+
+# 補助資料図17の描画
+par(mfrow=c(3,1))
+par(cex=0.8)
+par(mar=c(3,3,0.5,1.5))
+par(mgp=c(2,0.5,0))
+plot(nen[,1]/nen[,4]*1e5, type="l", xlab="",ylab="10万人あたり死者数", xaxt="n",xaxs="i",yaxs="i",ylim=c(0,10))
+lines(kfsPois2$muhat[1:31,1]/nen[1:31,4]*1e5,col=2)
+lines(32:36,prePois2$sibou[32:36,1]/nen[32:36,4]*1e5,col=3,lwd=1)
+lines(32:36,prePois2$sibou[32:36,2]/nen[32:36,4]*1e5,col=3,lwd=1)
+lines(32:36,prePois2$sibou[32:36,3]/nen[32:36,4]*1e5,col=3,lwd=1)
+axis(side=1,1+0:7*5,1980+0:7*5)
+mtext("(a) 死者数",side=1,cex=1,line=2)
+plot(nen[,2]/nen[,4]*1e5, type="l", xlab="",ylab="10万人あたり重傷者数", xaxt="n",xaxs="i",yaxs="i",ylim=c(0,70))
+lines(kfsPois2$muhat[1:31,2]/nen[1:31,4]*1e5,col=2)
+lines(32:36,prePois2$jusyou[32:36,1]/nen[32:36,4]*1e5,col=3,lwd=1)
+lines(32:36,prePois2$jusyou[32:36,2]/nen[32:36,4]*1e5,col=3,lwd=1)
+lines(32:36,prePois2$jusyou[32:36,3]/nen[32:36,4]*1e5,col=3,lwd=1)
+axis(side=1,1+0:7*5,1980+0:7*5)
+mtext("(b) 重傷者数",side=1,cex=1,line=2)
+plot(nen[,3]/nen[,4]*1e5, type="l", xlab="",ylab="10万人あたりその他負傷者数", xaxt="n",xaxs="i",yaxs="i",ylim=c(0,1000))
+lines(kfsPois2$muhat[1:31,3]/nen[1:31,4]*1e5,col=2)
+lines(32:36,prePois2$fusyou[32:36,1]/nen[32:36,4]*1e5,col=3,lwd=1)
+lines(32:36,prePois2$fusyou[32:36,2]/nen[32:36,4]*1e5,col=3,lwd=1)
+lines(32:36,prePois2$fusyou[32:36,3]/nen[32:36,4]*1e5,col=3,lwd=1)
+axis(side=1,1+0:7*5,1980+0:7*5)
+mtext("(c) その他の負傷者数",side=1,cex=1,line=2)
+
+# 状態空間モデルの定義（ランダム効果あり）
+modPois3 <- SSModel(nenNA[,1:3] ~ 
+  SSMtrend(2, Q = list(matrix(0, 3, 3), matrix(NA, 3, 3))) +
+  SSMcustom(Z=diag(3), T=matrix(0, 3, 3), Q=matrix(NA, 3, 3)),
+  distribution = "poisson", u = nenNA[,4])
+
+# 対数尤度最大化による未知パラメータの推定
+fitPois3 <- fitSSM(modPois3, c(rep(-10,6),rep(0,6)), method="BFGS",nsim=1000)
+
+# インポータンス・サンプリングによる状態推定
+kfsPois3 <- KFS(fitPois3$model, nsim=1000)
+
+# AIC の算出
+aicPois3 <- 2 * fitPois3$optim.out$value + 2 * (12 + 6)
+
+# インポータンス・サンプリングによる観測値の予測
+prePois3 <- predict(fitPois3$model, interval="prediction",
+  level=0.95, nsim=10000)
+
+# 補助資料図18の描画
+par(mfrow=c(3,1))
+par(cex=0.8)
+par(mar=c(3,3,0.5,1.5))
+par(mgp=c(2,0.5,0))
+plot(nen[,1]/nen[,4]*1e5, type="l", xlab="",ylab="10万人あたり死者数", xaxt="n",xaxs="i",yaxs="i",ylim=c(0,10))
+lines(exp(kfsPois3$alphahat[,"level.sibou"])*1e5,col=2)
+lines(32:36,prePois3$sibou[32:36,1]/nen[32:36,4]*1e5,col=3,lwd=1)
+lines(32:36,prePois3$sibou[32:36,2]/nen[32:36,4]*1e5,col=3,lwd=1)
+lines(32:36,prePois3$sibou[32:36,3]/nen[32:36,4]*1e5,col=3,lwd=1)
+axis(side=1,1+0:7*5,1980+0:7*5)
+mtext("(a) 死者数",side=1,cex=1,line=2)
+plot(nen[,2]/nen[,4]*1e5, type="l", xlab="",ylab="10万人あたり重傷者数", xaxt="n",xaxs="i",yaxs="i",ylim=c(0,70))
+lines(exp(kfsPois3$alphahat[,"level.jusyou"])*1e5,col=2)
+lines(32:36,prePois3$jusyou[32:36,1]/nen[32:36,4]*1e5,col=3,lwd=1)
+lines(32:36,prePois3$jusyou[32:36,2]/nen[32:36,4]*1e5,col=3,lwd=1)
+lines(32:36,prePois3$jusyou[32:36,3]/nen[32:36,4]*1e5,col=3,lwd=1)
+axis(side=1,1+0:7*5,1980+0:7*5)
+mtext("(b) 重傷者数",side=1,cex=1,line=2)
+plot(nen[,3]/nen[,4]*1e5, type="l", xlab="",ylab="10万人あたりその他負傷者数", xaxt="n",xaxs="i",yaxs="i",ylim=c(0,1000))
+lines(exp(kfsPois3$alphahat[,"level.fusyou"])*1e5,col=2)
+lines(32:36,prePois3$fusyou[32:36,1]/nen[32:36,4]*1e5,col=3,lwd=1)
+lines(32:36,prePois3$fusyou[32:36,2]/nen[32:36,4]*1e5,col=3,lwd=1)
+lines(32:36,prePois3$fusyou[32:36,3]/nen[32:36,4]*1e5,col=3,lwd=1)
+axis(side=1,1+0:7*5,1980+0:7*5)
+mtext("(c) その他の負傷者数",side=1,cex=1,line=2)
+
+### 解析例⑤：年齢別死亡率の解析 ###
+
+# パッケージ“KFAS”の読み込み
+library(KFAS) 
+
+# 死亡率データの読み込み（パス指定が必要。難しければ、データ読み込み済.RDataを起動すれば最初からデータが入っています）
+mtx = read.table("Mx_1x1.txt",header=T,skip=2)
+
+mtxf=t(matrix(as.numeric(as.character(mtx[,3])),111,70)) #女性の死亡率
+mtxm=t(matrix(as.numeric(as.character(mtx[,4])),111,70)) #男性の死亡率
+
+lmtxf = ts(log(mtxf[,20:60]))
+lmtxm = ts(log(mtxm[,20:60]))
+
+# スライド番号92の図の描画
+par(mar=c(2,3,1,1))
+par(mgp=c(2,.5,0))
+matplot(1947:2016,lmtxf,type="l",col=rainbow(50)[1:41],xaxs="i",lty=1,ylab="log(年齢別死亡率)")
+
+x11()
+par(mar=c(1,3,1,3))
+par(mgp=c(2,.5,0))
+image(0,20:60,t(20:60),breaks=19:60,col=rainbow(50)[1:41],ylab="年齢",xaxt="n")
+
+y = rbind(lmtxf,NA,NA,NA,NA,NA) # 女性の対数死亡率。将来5年間を欠損NAにして予測する
+
+# 系列（年齢）ごとに個別に平滑化トレンドモデルを当てはめる場合
+muhat = y # このあと平滑化された水準成分を代入していく
+for(i in 1:41){
+mod = SSModel(y[,i]~SSMtrend(2,Q=list(0,NA)),H=NA)
+fit = fitSSM(mod,c(0,0))
+kfs = KFS(fit$mod)
+muhat[,i] = kfs$muhat
+}
+
+# スライド番号93の図の描画
+par(mar=c(2,3,1,1))
+par(mgp=c(2,.5,0))
+matplot(1947:2021,muhat,type="l",col=rainbow(50)[1:41],xaxs="i",lty=1,ylab="log(年齢別死亡率)")
+abline(v=2016,lty=2)
+
+
+# 動的因子モデル（１因子ローカルレベルモデル）
+mod1 = SSModel(y~SSMtrend(1,Q=1,"common")+SSMtrend(1,Q=0,"distinct"))
+
+# 因子負荷量は自動で推定できないので，updatefnという
+# 未知パラメータに値parsを代入したモデルを作る関数
+# （更新関数）を定義してfitSSMの引数に加える必要がある
+
+updatefn1 <- function(pars,mod1){
+mod1 = SSModel(y~SSMtrend(1,Q=1,"common")+SSMtrend(1,Q=0,"distinct"))
+mod1$Z[,1,] = pars[1:41]
+diag(mod1$H[,,])=exp(pars[42])
+mod1
+}
+
+# 対数尤度最大化による未知パラメータの推定
+fit1 = fitSSM(mod1,c(rep(0.1,41),-5),updatefn1,method="BFGS")
+
+kfs1 = KFS(fit1$mod)
+loglik1 = kfs1$logLik - sum(kfs1$Finf>0) * log(2*pi)/2
+aic1 = -2*loglik1 + 2*(42+42)
+
+# スライド番号96の図の描画
+par(mar=c(2,3,1,1))
+par(mgp=c(2,.5,0))
+matplot(1947:2021,kfs1$muhat,type="l",lty=1,col=rainbow(50)[1:41],xaxs="i",ylab="log(年齢別死亡率)")
+abline(v=2016,lty=2)
+
+par(mar=c(2.5,2.5,.5,.5))
+par(mgp=c(1.5,.5,0))
+plot(1947:2021,kfs1$alphahat[,1],type="l",lwd=2,xlab="年",ylab="因子")
+
+par(mar=c(2.5,2.5,.5,.5))
+par(mgp=c(1.5,.5,0))
+plot(20:60,fit1$opt$par[1:41],type="l",lwd=2,xlab="年齢",ylab="因子負荷量",ylim=c(0,0.1),yaxs="i")
+
+# 動的因子モデル（１因子平滑化トレンドモデル）
+mod2 = SSModel(y~SSMtrend(2,Q=diag(c(0,1)),"common")+SSMtrend(1,Q=0,"distinct"))
+
+# updatefn（更新関数）の定義
+updatefn2 <- function(pars,mod2){
+mod2 = SSModel(y~SSMtrend(2,Q=diag(c(0,1)),"common")+SSMtrend(1,Q=0,"distinct"))
+mod2$Z[,1,] = pars[1:41]
+diag(mod2$H[,,])=exp(pars[42])
+mod2
+}
+
+# 対数尤度最大化による未知パラメータの推定
+fit2 = fitSSM(mod2,c(rep(0.1,41),-5),updatefn2,method="BFGS")
+kfs2 = KFS(fit2$mod)
+loglik2 = kfs2$logLik - sum(kfs2$Finf>0) * log(2*pi)/2
+aic2 = -2*loglik2 + 2*(42+43)
+
+# スライド番号97の図の描画
+par(mar=c(2,3,1,1))
+par(mgp=c(2,.5,0))
+matplot(1947:2021,kfs2$muhat,type="l",lty=1,col=rainbow(50)[1:41],xaxs="i",ylab="log(年齢別死亡率)")
+abline(v=2016,lty=2)
+
+par(mar=c(2.5,2.5,.5,.5))
+par(mgp=c(1.5,.5,0))
+plot(1947:2021,kfs2$alphahat[,1],type="l",lwd=2,xlab="年",ylab="因子")
+
+par(mar=c(2.5,2.5,.5,.5))
+par(mgp=c(1.5,.5,0))
+plot(20:60,fit2$opt$par[1:41],type="l",lwd=2,xlab="年齢",ylab="因子負荷量",ylim=c(0,0.05),yaxs="i")
+
+
+
+# 動的因子モデル（２因子ローカルレベルモデル）
+mod3 = SSModel(y~SSMtrend(1,Q=1,"common",state_names="factor1_level")+SSMtrend(1,Q=1,"common",state_names="factor2_level")+SSMtrend(1,Q=0,"distinct"))
+
+# updatefn（更新関数）の定義
+updatefn3 <- function(pars,mod3){
+mod3 = SSModel(y~SSMtrend(1,Q=1,"common",state_names="factor1_level")+SSMtrend(1,Q=1,"common",state_names="factor2_level")+SSMtrend(1,Q=0,"distinct"))
+mod3$Z[,"factor1_level",] = pars[1:41]
+mod3$Z[,"factor2_level",] = pars[42:82]
+diag(mod3$H[,,])=exp(pars[83])
+mod3
+}
+
+# 対数尤度最大化による未知パラメータの推定
+fit3 = fitSSM(mod3,c(fit1$opt$par[1:41],-20:20/200,-6),updatefn3,method="BFGS")
+kfs3 = KFS(fit3$mod)
+loglik3 = kfs3$logLik - sum(kfs3$Finf>0) * log(2*pi)/2
+aic3 = -2*loglik3 + 2*(83+43)
+
+# スライド番号102の図の描画
+par(mar=c(2,3,1,1))
+par(mgp=c(2,.5,0))
+matplot(1947:2021,kfs3$muhat,type="l",lty=1,col=rainbow(50)[1:41],xaxs="i",ylab="log(年齢別死亡率)")
+abline(v=2016,lty=2)
+
+par(mar=c(2.5,2.5,.5,.5))
+par(mgp=c(1.5,.5,0))
+plot(1947:2021,kfs3$alphahat[,1],type="l",col=2,lwd=2,xlab="年",ylab="因子",ylim=c(-60,10))
+lines(1947:2021,kfs3$alphahat[,2],type="l",col=4,lwd=2)
+
+par(mar=c(2.5,2.5,.5,.5))
+par(mgp=c(1.5,.5,0))
+plot(20:60,fit3$opt$par[1:41],type="l",col=2,lwd=2,xlab="年齢",ylab="因子負荷量",ylim=c(-0.1,0.1),yaxs="i")
+lines(20:60,fit3$opt$par[42:82],col=4,lwd=2)
+
+
+# 動的因子モデル（２因子平滑化トレンドモデル）
+mod4 = SSModel(y~SSMtrend(2,Q=diag(c(0,1)),"common",state_names=c("factor1_level","factor1_slope"))+SSMtrend(2,Q=diag(c(0,1)),"common",state_names=c("factor2_level","factor2_slope"))+SSMtrend(1,Q=0,"distinct"))
+
+# updatefn（更新関数）の定義
+updatefn4 <- function(pars,mod4){
+mod4 = SSModel(y~SSMtrend(2,Q=diag(c(0,1)),"common",state_names=c("factor1_level","factor1_slope"))+SSMtrend(2,Q=diag(c(0,1)),"common",state_names=c("factor2_level","factor2_slope"))+SSMtrend(1,Q=0,"distinct"))
+mod4$Z[,"factor1_level",] = pars[1:41]
+mod4$Z[,"factor2_level",] = pars[42:82]
+diag(mod4$H[,,])=exp(pars[83])
+mod4
+}
+
+# 対数尤度最大化による未知パラメータの推定
+fit4 = fitSSM(mod4,fit3$opt$par,updatefn4,method="BFGS")
+kfs4 = KFS(fit4$mod)
+loglik4 = kfs4$logLik - sum(kfs4$Finf>0) * log(2*pi)/2
+aic4 = -2*loglik4 + 2*(83+45)
+
+# スライド番号103の図の描画
+par(mar=c(2,3,1,1))
+par(mgp=c(2,.5,0))
+matplot(1947:2021,kfs4$muhat,type="l",lty=1,col=rainbow(50)[1:41],xaxs="i",ylab="log(年齢別死亡率)")
+abline(v=2016,lty=2)
+
+par(mar=c(2.5,2.5,.5,.5))
+par(mgp=c(1.5,.5,0))
+plot(1947:2021,kfs4$alphahat[,"factor1_level"],type="l",col=2,lwd=2,xlab="年",ylab="因子",ylim=c(-60,10))
+lines(1947:2021,kfs4$alphahat[,"factor2_level"],type="l",col=4,lwd=2)
+
+par(mar=c(2.5,2.5,.5,.5))
+par(mgp=c(1.5,.5,0))
+plot(20:60,fit4$opt$par[1:41],type="l",col=2,lwd=2,xlab="年齢",ylab="因子負荷量",ylim=c(-0.1,0.1),yaxs="i")
+lines(20:60,fit4$opt$par[42:82],col=4,lwd=2)
+
+
+# 動的因子モデル（２因子 1つはローカルレベルモデル＆もう1つは平滑化トレンドモデル）
+mod5 = SSModel(y~SSMtrend(2,Q=diag(c(0,1)),"common",state_names=c("factor1_level","factor1_slope"))+SSMtrend(1,Q=1,"common",state_names="factor2_level")+SSMtrend(1,Q=0,"distinct"))
+
+# updatefn（更新関数）の定義
+updatefn5 <- function(pars,mod5){
+mod5 = SSModel(y~SSMtrend(2,Q=diag(c(0,1)),"common",state_names=c("factor1_level","factor1_slope"))+SSMtrend(1,Q=1,"common",state_names="factor2_level")+SSMtrend(1,Q=0,"distinct"))
+mod5$Z[,"factor1_level",] = pars[1:41]
+mod5$Z[,"factor2_level",] = pars[42:82]
+diag(mod5$H[,,])=exp(pars[83])
+mod5
+}
+
+# 対数尤度最大化による未知パラメータの推定
+fit5 = fitSSM(mod5,fit3$opt$par,updatefn5,method="BFGS")
+kfs5 = KFS(fit5$mod)
+loglik5 = kfs5$logLik - sum(kfs5$Finf>0) * log(2*pi)/2
+aic5 = -2*loglik5 + 2*(83+44) # AICがこれまでのモデルの中で最も小さい
+
+# スライド番号104の図の描画
+par(mar=c(2,3,1,1))
+par(mgp=c(2,.5,0))
+matplot(1947:2021,kfs5$muhat,type="l",lty=1,col=rainbow(50)[1:41],xaxs="i",ylab="log(年齢別死亡率)")
+abline(v=2016,lty=2)
+
+par(mar=c(2.5,2.5,.5,.5))
+par(mgp=c(1.5,.5,0))
+plot(1947:2021,kfs5$alphahat[,"factor1_level"],type="l",col=2,lwd=2,xlab="年",ylab="因子",ylim=c(-60,10))
+lines(1947:2021,kfs5$alphahat[,"factor2_level"],type="l",col=4,lwd=2)
+
+par(mar=c(2.5,2.5,.5,.5))
+par(mgp=c(1.5,.5,0))
+plot(20:60,fit5$opt$par[1:41],type="l",col=2,lwd=2,xlab="年齢",ylab="因子負荷量",ylim=c(-0.1,0.1),yaxs="i")
+lines(20:60,fit5$opt$par[42:82],col=4,lwd=2)
+
+
